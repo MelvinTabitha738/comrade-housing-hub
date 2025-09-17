@@ -1,7 +1,8 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from universities.models import University
-from accounts.models import LandlordProfile
+from accounts.models import Profile   # ✅ now using Profile instead of LandlordProfile
+from math import radians, sin, cos, sqrt, atan2
 
 
 # ------------------ VALIDATORS ------------------
@@ -37,18 +38,37 @@ def room_video_upload_path(instance, filename):
 # ------------------ MODELS ------------------
 class Apartment(models.Model):
     university = models.ForeignKey(University, on_delete=models.CASCADE, related_name="apartments")
-    landlord = models.ForeignKey(LandlordProfile, on_delete=models.CASCADE, related_name="apartments")
+    landlord = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="apartments")  # ✅ updated
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
-    distance_m = models.PositiveIntegerField(null=True, blank=True, help_text="Meters from main gate")
     address = models.CharField(max_length=255, blank=True)
     amenities = models.JSONField(default=list, blank=True)
     is_approved = models.BooleanField(default=False)
     created_at = models.DateTimeField(auto_now_add=True)
 
+    # new fields for map coordinates
+    lat = models.FloatField(null=True, editable=False)
+    lon = models.FloatField(null=True, editable=False)
+
     def __str__(self):
         return f"{self.name} - {self.university.name}"
+
+    def distance_from_university(self):
+        """Calculate distance from university in km using Haversine formula."""
+        if not self.university.lat or not self.university.lng or not self.lat or not self.lon:
+            return None
+
+        R = 6371  # Earth radius in km
+        lat1, lon1 = radians(self.university.lat), radians(self.university.lng)
+        lat2, lon2 = radians(self.lat), radians(self.lon)
+
+        dlat = lat2 - lat1
+        dlon = lon2 - lon1
+
+        a = sin(dlat / 2) ** 2 + cos(lat1) * cos(lat2) * sin(dlon / 2) ** 2
+        c = 2 * atan2(sqrt(a), sqrt(1 - a))
+        return round(R * c, 2)  # distance in kilometers
 
 
 class ApartmentImage(models.Model):

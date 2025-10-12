@@ -8,6 +8,8 @@ from .serializers import ProfileSerializer, SignupSerializer, LoginSerializer
 
 
 # ---------------- SIGNUP + AUTO LOGIN ----------------
+
+
 class SignupView(generics.CreateAPIView):
     """
     Handles user signup and returns JWT token immediately.
@@ -21,12 +23,15 @@ class SignupView(generics.CreateAPIView):
         serializer.is_valid(raise_exception=True)
         user = serializer.save()
 
+        # Manually create Profile to avoid UNIQUE constraint errors
+        profile, created = Profile.objects.get_or_create(user=user)
+
         # Generate JWT tokens
         refresh = RefreshToken.for_user(user)
-        profile = ProfileSerializer(user.profile).data
+        profile_data = ProfileSerializer(profile).data
 
         return Response({
-            "user": profile,
+            "user": profile_data,
             "refresh": str(refresh),
             "access": str(refresh.access_token)
         }, status=status.HTTP_201_CREATED)

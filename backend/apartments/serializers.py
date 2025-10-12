@@ -2,17 +2,17 @@ from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
 from django.db.models import Avg
 from .models import Apartment, ApartmentImage, Room, RoomVideo
-from reviews.models import Review  # import Review
-from django.contrib.auth.models import User
-from accounts.models import Profile   
+from reviews.models import Review
+from accounts.models import Profile
 
 
-
-# --- Image Serializer ---
+# --- Apartment Image (Cover) Serializer ---
 class ApartmentImageSerializer(serializers.ModelSerializer):
+    apartment = serializers.PrimaryKeyRelatedField(queryset=Apartment.objects.all())
+
     class Meta:
         model = ApartmentImage
-        fields = ['id', 'image', 'caption']
+        fields = ['id', 'apartment', 'image', 'caption']
         read_only_fields = ['id']
 
 
@@ -26,13 +26,15 @@ class RoomSerializer(serializers.ModelSerializer):
 
 # --- Room Video Serializer ---
 class RoomVideoSerializer(serializers.ModelSerializer):
+    apartment = serializers.PrimaryKeyRelatedField(queryset=Apartment.objects.all())
+
     class Meta:
         model = RoomVideo
-        fields = ['id', 'room_type', 'video']
+        fields = ['id', 'apartment', 'room_type', 'video']
         read_only_fields = ['id']
 
 
-# --- Review Serializer (nested inside Apartment) ---
+# --- Review Serializer (nested) ---
 class ReviewSerializer(serializers.ModelSerializer):
     reviewer = serializers.CharField(source="user.username", read_only=True)
 
@@ -44,12 +46,12 @@ class ReviewSerializer(serializers.ModelSerializer):
 
 # --- Apartment (Read) Serializer ---
 class ApartmentReadSerializer(serializers.ModelSerializer):
-    images = ApartmentImageSerializer(many=True, read_only=True)
+    image = ApartmentImageSerializer(read_only=True)  # ✅ single image, not list
     rooms = RoomSerializer(many=True, read_only=True)
     videos = RoomVideoSerializer(many=True, read_only=True)
     distance_km = serializers.SerializerMethodField()
     landlord = serializers.ReadOnlyField(source="landlord.user.username")
-    reviews = ReviewSerializer(many=True, read_only=True)  # all reviews
+    reviews = ReviewSerializer(many=True, read_only=True)
     average_rating = serializers.SerializerMethodField()
 
     class Meta:
@@ -57,15 +59,16 @@ class ApartmentReadSerializer(serializers.ModelSerializer):
         fields = [
             'id', 'university', 'landlord', 'name', 'description', 'monthly_rent',
             'address', 'amenities', 'is_approved', 'created_at', 'lat', 'lon',
-            'distance_km', 'images', 'rooms', 'videos', 'reviews', 'average_rating'
+            'distance_km', 'image', 'rooms', 'videos', 'reviews', 'average_rating'
         ]
         read_only_fields = [
-            'id', 'created_at', 'lat', 'lon',
-            'is_approved', 'landlord', 'reviews', 'average_rating'
+            'id', 'created_at', 'lat', 'lon', 'is_approved',
+            'landlord', 'reviews', 'average_rating'
         ]
 
     def get_distance_km(self, obj):
-        return obj.distance_from_university()
+        distance = obj.distance_from_university()
+        return distance if distance is not None else 0.0
 
     def get_average_rating(self, obj):
         return obj.reviews.aggregate(avg=Avg("rating"))["avg"] or 0
@@ -83,9 +86,11 @@ class ApartmentWriteSerializer(serializers.ModelSerializer):
 
     def create(self, validated_data):
         request = self.context.get('request')
-        landlord_profile = getattr(request.user, 'landlord_profile', None)
+        landlord_profile = getattr(request.user, 'profile', None)
 
-        if not landlord_profile:
+        if not landlord_profile or landlord_profile.role != "landlord":
             raise ValidationError("Only landlords can create apartments.")
 
-        return Apartment.objects.create(landlord=landlord_profile, **validated_data)
+        # Create apartment instance
+        apartment = Apartment.objects.create(landlord=landlord_profile, **validated_data)
+        return apartment

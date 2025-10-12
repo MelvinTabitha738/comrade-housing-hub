@@ -43,31 +43,40 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    "rest_framework_simplejwt",
     'accounts',
     'apartments',
     'bookings',
     'payments',
     'reviews',
     'universities',
-    'django_filters'
+    'django_filters',
+    "corsheaders"
+
 
 
 
 ]
 
 # --- REST FRAMEWORK SETTINGS ---
+
 REST_FRAMEWORK = {
-    'DEFAULT_AUTHENTICATION_CLASSES': [
-        'rest_framework.authentication.SessionAuthentication',
-        'rest_framework.authentication.BasicAuthentication',
-        'rest_framework.authentication.TokenAuthentication',
+    "DEFAULT_AUTHENTICATION_CLASSES": [
+        "rest_framework_simplejwt.authentication.JWTAuthentication",
+        "rest_framework.authentication.SessionAuthentication",
+        "rest_framework.authentication.BasicAuthentication",
+        "rest_framework.authentication.TokenAuthentication",
     ],
-    'DEFAULT_PERMISSION_CLASSES': [
-        'rest_framework.permissions.IsAuthenticated',
+    "DEFAULT_PERMISSION_CLASSES": [
+        "rest_framework.permissions.IsAuthenticated",
     ],
+    "DEFAULT_PAGINATION_CLASS": "rest_framework.pagination.PageNumberPagination",
+    "PAGE_SIZE": 20,
 }
 
+
 MIDDLEWARE = [
+    "corsheaders.middleware.CorsMiddleware",
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
@@ -76,6 +85,8 @@ MIDDLEWARE = [
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
+
+CORS_ALLOWED_ORIGINS = ["http://localhost:5173"]
 
 ROOT_URLCONF = 'ComradeHousingHub.urls'
 
@@ -150,11 +161,11 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
 #daraja api intergration settings
-MPESA_CONSUMER_KEY = "your_consumer_key"
-MPESA_CONSUMER_SECRET = "your_consumer_secret"
-MPESA_OAUTH_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
-MPESA_STK_PUSH_URL = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
-MPESA_SHORTCODE = "174379"  # example till/paybill
-MPESA_PASSWORD = "your_encoded_password"  # BusinessShortCode+PassKey+Timestamp (base64)
-MPESA_CALLBACK_URL = "https://yourdomain.com/api/payments/callback/"
+#MPESA_CONSUMER_KEY = "yAz9aU6Xqc55LJsAgf3ixEJDY9VU5gX3nlWLnu7kA3RvYZsv"
+#MPESA_CONSUMER_SECRET = "GATWttZUNG2a3qVKT5Z5Ut7T0C7GQKVx8LiJmL16LVzj2IPYtGG0aPGbL958LlYM"
+#MPESA_OAUTH_URL = "https://sandbox.safaricom.co.ke/oauth/v1/generate?grant_type=client_credentials"
+#MPESA_STK_PUSH_URL = "https://sandbox.safaricom.co.ke/mpesa/stkpush/v1/processrequest"
+#MPESA_SHORTCODE = "174379"  # example till/paybill
+#MPESA_PASSWORD = "your_encoded_password"  # BusinessShortCode+PassKey+Timestamp (base64)
+#MPESA_CALLBACK_URL = "https://yourdomain.com/api/payments/callback/"
 

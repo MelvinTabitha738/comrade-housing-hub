@@ -1,7 +1,7 @@
 from django.db import models
 from django.core.exceptions import ValidationError
 from universities.models import University
-from accounts.models import Profile   # ✅ now using Profile instead of LandlordProfile
+from accounts.models import Profile
 from math import radians, sin, cos, sqrt, atan2
 
 
@@ -38,7 +38,7 @@ def room_video_upload_path(instance, filename):
 # ------------------ MODELS ------------------
 class Apartment(models.Model):
     university = models.ForeignKey(University, on_delete=models.CASCADE, related_name="apartments")
-    landlord = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="apartments")  # ✅ updated
+    landlord = models.ForeignKey(Profile, on_delete=models.CASCADE, related_name="apartments")
     name = models.CharField(max_length=200)
     description = models.TextField(blank=True)
     monthly_rent = models.DecimalField(max_digits=10, decimal_places=2)
@@ -71,10 +71,18 @@ class Apartment(models.Model):
         return round(R * c, 2)  # distance in kilometers
 
 
+# ✅ Only one cover image per apartment
 class ApartmentImage(models.Model):
-    apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name="images")
+    apartment = models.OneToOneField(
+        Apartment,
+        on_delete=models.CASCADE,
+        related_name="image"  # singular since it's one
+    )
     image = models.ImageField(upload_to=apartment_image_upload_path, validators=[validate_image])
     caption = models.CharField(max_length=120, blank=True)
+
+    def __str__(self):
+        return f"Cover image for {self.apartment.name}"
 
 
 class Room(models.Model):
@@ -86,7 +94,7 @@ class Room(models.Model):
     ]
 
     apartment = models.ForeignKey(Apartment, on_delete=models.CASCADE, related_name="rooms")
-    label = models.CharField(max_length=30)  # e.g., "Bed 1"
+    label = models.CharField(max_length=30)  # e.g., "Room A"
     is_vacant = models.BooleanField(default=True)
     room_type = models.CharField(max_length=20, choices=ROOM_TYPE_CHOICES, default="single")
 

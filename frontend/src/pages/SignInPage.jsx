@@ -107,13 +107,13 @@ const SignInPage = () => {
   };
 
   // Load remembered email on mount
-  React.useEffect(() => {
-    const rememberedEmail = localStorage.getItem("rememberedEmail");
-    if (rememberedEmail) {
-      setFormData({ ...formData, email: rememberedEmail });
-      setRememberMe(true);
-    }
-  }, [formData]);
+React.useEffect(() => {
+  const rememberedEmail = localStorage.getItem("rememberedEmail");
+  if (rememberedEmail) {
+    setFormData((prev) => ({ ...prev, email: rememberedEmail }));
+    setRememberMe(true);
+  }
+}, []); // ✅ empty array means it runs only once on mount
 
   return (
     <div className="auth-container">

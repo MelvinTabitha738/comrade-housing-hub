@@ -1,21 +1,15 @@
 from django.db import models
 from rest_framework.permissions import IsAuthenticated
-
-from rest_framework import viewsets, permissions, filters
+from rest_framework import viewsets, permissions, filters, status
 from rest_framework.exceptions import PermissionDenied
 from django_filters.rest_framework import DjangoFilterBackend
 from rest_framework.decorators import api_view, permission_classes
 from rest_framework.response import Response
-from django.db.models import Sum
-from payments.models import Payment
 from django.shortcuts import get_object_or_404
-from rest_framework.decorators import api_view, permission_classes
-from rest_framework import status
-from universities.models import University
 from math import radians, sin, cos, sqrt, atan2
 
-
-
+from payments.models import Payment
+from universities.models import University
 from .models import Apartment, ApartmentImage, Room, RoomVideo
 from .serializers import (
     ApartmentReadSerializer, ApartmentWriteSerializer,
@@ -46,11 +40,11 @@ class IsOwnerOrAdmin(permissions.BasePermission):
 
 # --- Apartment ViewSet ---
 class ApartmentViewSet(viewsets.ModelViewSet):
-    queryset = Apartment.objects.all().select_related("university", "landlord")
+    queryset = Apartment.objects.all().select_related("university", "landlord").prefetch_related("rooms", "videos")
     filter_backends = [DjangoFilterBackend, filters.SearchFilter, filters.OrderingFilter]
-    filterset_fields = ["university", "is_approved", "monthly_rent"]
+    filterset_fields = ["university", "is_approved"]
     search_fields = ["name", "address"]
-    ordering_fields = ["monthly_rent", "created_at"]
+    ordering_fields = ["created_at"]
 
     def get_permissions(self):
         if self.action in ["create", "update", "partial_update", "destroy"]:
@@ -64,21 +58,19 @@ class ApartmentViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        qs = Apartment.objects.all().select_related("university", "landlord")
+        qs = Apartment.objects.select_related("university", "landlord").prefetch_related("rooms", "videos")
 
         if user.is_staff:
             return qs
-
         if user.is_authenticated and hasattr(user, "profile") and user.profile.role == "landlord":
             return qs.filter(landlord=user.profile)
-
         return qs.filter(is_approved=True)
 
     def perform_create(self, serializer):
         user = self.request.user
         if not user.is_authenticated or not hasattr(user, "profile") or user.profile.role != "landlord":
             raise PermissionDenied("Only landlords can create apartments.")
-        serializer.save(landlord=user.profile)
+        serializer.save()
 
 
 # --- ApartmentImage ViewSet ---
@@ -99,22 +91,24 @@ class ApartmentImageViewSet(viewsets.ModelViewSet):
         return ApartmentImage.objects.all()
 
     def perform_create(self, serializer):
-      apartment = serializer.validated_data["apartment"]
+        apartment = serializer.validated_data["apartment"]
 
-    # ✅ Ensure landlord owns the apartment
-      if apartment.landlord != self.request.user.profile:
-        raise PermissionDenied("You can only upload images for your own apartments.")
+        # ✅ Ensure landlord owns the apartment
+        if apartment.landlord != self.request.user.profile:
+            raise PermissionDenied("You can only upload images for your own apartments.")
 
-    # ✅ Check if apartment already has a cover image
-      if ApartmentImage.objects.filter(apartment=apartment).exists():
-        raise PermissionDenied("This apartment already has a cover image. You can only upload one.")
+        # ✅ Ensure only one cover image per apartment
+        if ApartmentImage.objects.filter(apartment=apartment).exists():
+            raise PermissionDenied("This apartment already has a cover image.")
 
-      serializer.save()
+        serializer.save()
 
 
 # --- Room ViewSet ---
 class RoomViewSet(viewsets.ModelViewSet):
     serializer_class = RoomSerializer
+    filter_backends = [DjangoFilterBackend, filters.SearchFilter]
+    filterset_fields = ["apartment", "room_type", "is_vacant"]
 
     def get_permissions(self):
         if self.action in ["create", "update", "partial_update", "destroy"]:
@@ -123,11 +117,22 @@ class RoomViewSet(viewsets.ModelViewSet):
 
     def get_queryset(self):
         user = self.request.user
-        if user.is_staff:
-            return Room.objects.all()
+        qs = Room.objects.select_related("apartment", "apartment__university")
+
+        # Filter by custom status alias
+        status_param = self.request.query_params.get("status")
+        if status_param == "vacant":
+            qs = qs.filter(is_vacant=True)
+        elif status_param == "booked":
+            qs = qs.filter(is_vacant=False)
+
+        # Landlord view: show only their own rooms
         if user.is_authenticated and hasattr(user, "profile") and user.profile.role == "landlord":
-            return Room.objects.filter(apartment__landlord=user.profile)
-        return Room.objects.all()
+            qs = qs.filter(apartment__landlord=user.profile)
+        elif not user.is_staff:
+            qs = qs.filter(apartment__is_approved=True)
+
+        return qs
 
     def perform_create(self, serializer):
         apartment = serializer.validated_data["apartment"]
@@ -164,8 +169,8 @@ class RoomVideoViewSet(viewsets.ModelViewSet):
 @api_view(['GET'])
 @permission_classes([IsAuthenticated])
 def landlord_stats(request):
-    landlord = request.user.profile  # adjust if using a different profile model
-    apartments = Apartment.objects.filter(landlord=landlord)
+    landlord = request.user.profile
+    apartments = Apartment.objects.filter(landlord=landlord).prefetch_related("rooms", "videos")
 
     total_apartments = apartments.count()
     total_rooms = Room.objects.filter(apartment__in=apartments).count()
@@ -180,26 +185,28 @@ def landlord_stats(request):
         booking__room__apartment__in=apartments
     ).aggregate(total=models.Sum('amount'))['total'] or 0
 
-    # ✅ Always include apartments list (id, name, location, etc.)
     apartments_data = []
     for apt in apartments:
+        cover_image_url = apt.image.image.url if hasattr(apt, "image") else None
+        avg_rent = apt.rooms.aggregate(avg=models.Avg("monthly_rent"))["avg"] or 0
+
         apartments_data.append({
             "id": apt.id,
             "name": apt.name,
             "description": apt.description,
             "university": apt.university.name,
-            "monthly_rent": float(apt.monthly_rent),
+            "average_rent": float(avg_rent),
             "address": apt.address,
             "is_approved": apt.is_approved,
             "distance_km": apt.distance_from_university(),
             "amenities": apt.amenities,
-            "images": [img.image.url for img in apt.images.all()],
+            "cover_image": cover_image_url,
             "videos": [vid.video.url for vid in apt.videos.all()],
             "created_at": apt.created_at,
         })
 
     return Response({
-        "apartments": apartments_data,  # <-- Now React can safely map this
+        "apartments": apartments_data,
         "totalApartments": total_apartments,
         "totalRooms": total_rooms,
         "pendingBookings": pending_bookings,
@@ -208,6 +215,7 @@ def landlord_stats(request):
     })
 
 
+# --- Distance Calculation Endpoint ---
 @api_view(['GET'])
 @permission_classes([permissions.AllowAny])
 def calculate_distance(request):
@@ -223,22 +231,18 @@ def calculate_distance(request):
         apt_lat = request.query_params.get("apt_lat")
         apt_lon = request.query_params.get("apt_lon")
 
-        # Check if any are missing
         if None in [uni_lat, uni_lon, apt_lat, apt_lon]:
             return Response(
                 {"error": "Missing latitude or longitude values."},
                 status=status.HTTP_400_BAD_REQUEST
             )
 
-        # Convert to float safely
         uni_lat, uni_lon = float(uni_lat), float(uni_lon)
         apt_lat, apt_lon = float(apt_lat), float(apt_lon)
 
-        # Haversine formula
-        R = 6371  # Earth radius in km
+        R = 6371
         d_lat = radians(apt_lat - uni_lat)
         d_lon = radians(apt_lon - uni_lon)
-
         a = sin(d_lat / 2) ** 2 + cos(radians(uni_lat)) * cos(radians(apt_lat)) * sin(d_lon / 2) ** 2
         c = 2 * atan2(sqrt(a), sqrt(1 - a))
         distance = R * c
@@ -250,7 +254,6 @@ def calculate_distance(request):
             {"error": "Invalid latitude or longitude format."},
             status=status.HTTP_400_BAD_REQUEST
         )
-
     except Exception as e:
         return Response(
             {"error": str(e)},

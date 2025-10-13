@@ -132,9 +132,7 @@ const Navbar = () => {
               Contact
             </a>
           </li>
-          <li>
-            <Link to="/properties">Properties</Link>
-          </li>
+          
         </ul>
 
         {/* Actions (Desktop) */}
@@ -216,11 +214,7 @@ const Navbar = () => {
               Contact
             </a>
           </li>
-          <li>
-            <Link to="/properties" onClick={toggleMenu}>
-              Properties
-            </Link>
-          </li>
+          
         </ul>
 
         <div className="mobile-actions">

@@ -1,4 +1,5 @@
 from django.contrib import admin
+from django.db import models
 from .models import Apartment, ApartmentImage, Room, RoomVideo
 
 
@@ -25,7 +26,7 @@ class ApartmentAdmin(admin.ModelAdmin):
         "name",
         "university",
         "landlord",
-        "monthly_rent",
+        "average_rent",
         "is_approved",
         "created_at",
         "distance_from_university",  # shows km if lat/lon + university coords exist
@@ -46,7 +47,6 @@ class ApartmentAdmin(admin.ModelAdmin):
                 "landlord",
                 "name",
                 "description",
-                "monthly_rent",
                 "address",
             )
         }),
@@ -60,6 +60,12 @@ class ApartmentAdmin(admin.ModelAdmin):
 
     readonly_fields = ("created_at",)
 
+    # ✅ Dynamically calculate average rent from related rooms
+    def average_rent(self, obj):
+        avg = obj.rooms.aggregate(models.Avg("monthly_rent"))["monthly_rent__avg"]
+        return f"Ksh {avg:.2f}" if avg else "N/A"
+    average_rent.short_description = "Avg Monthly Rent"
+
 
 # ------------------ OTHER ADMINS ------------------
 @admin.register(ApartmentImage)
@@ -70,7 +76,7 @@ class ApartmentImageAdmin(admin.ModelAdmin):
 
 @admin.register(Room)
 class RoomAdmin(admin.ModelAdmin):
-    list_display = ("label", "apartment", "room_type", "is_vacant")
+    list_display = ("label", "apartment", "room_type", "monthly_rent", "is_vacant")
     list_filter = ("room_type", "is_vacant")
     search_fields = ("label", "apartment__name")
 

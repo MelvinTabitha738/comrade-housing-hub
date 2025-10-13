@@ -11,13 +11,17 @@ const SignUpPage = () => {
     username: "",
     email: "",
     password: "",
+    confirm_password: "",
     role: "student",
   });
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [fieldErrors, setFieldErrors] = useState({});
   const [touchedFields, setTouchedFields] = useState({});
+  const [agreedToTerms, setAgreedToTerms] = useState(false);
+  const [successMessage, setSuccessMessage] = useState("");
 
   // Real-time validation
   const validateField = (name, value) => {
@@ -55,6 +59,12 @@ const SignUpPage = () => {
         }
         break;
       
+      case "confirm_password":
+        if (value !== formData.password) {
+          error = "Passwords do not match";
+        }
+        break;
+      
       default:
         break;
     }
@@ -71,6 +81,12 @@ const SignUpPage = () => {
       const error = validateField(name, value);
       setFieldErrors({ ...fieldErrors, [name]: error });
     }
+
+    // Also validate confirm_password if password changes
+    if (name === "password" && touchedFields.confirm_password) {
+      const confirmError = formData.confirm_password !== value ? "Passwords do not match" : "";
+      setFieldErrors({ ...fieldErrors, confirm_password: confirmError });
+    }
   };
 
   const handleBlur = (e) => {
@@ -84,14 +100,29 @@ const SignUpPage = () => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     setError("");
+    setSuccessMessage("");
     setLoading(true);
+
+    // Check if user agreed to terms
+    if (!agreedToTerms) {
+      setError("You must agree to the Terms of Service and Privacy Policy");
+      setLoading(false);
+      return;
+    }
 
     // Validate all fields
     const errors = {};
     Object.keys(formData).forEach(key => {
-      const error = validateField(key, formData[key]);
-      if (error) errors[key] = error;
+      if (key !== "confirm_password") { // Don't send confirm_password to backend
+        const error = validateField(key, formData[key]);
+        if (error) errors[key] = error;
+      }
     });
+
+    // Validate confirm_password
+    if (formData.password !== formData.confirm_password) {
+      errors.confirm_password = "Passwords do not match";
+    }
 
     if (Object.keys(errors).length > 0) {
       setFieldErrors(errors);
@@ -101,17 +132,24 @@ const SignUpPage = () => {
     }
 
     try {
-      const res = await axiosInstance.post("/accounts/signup/", formData);
-      const { access, refresh, user } = res.data;
+      // Remove confirm_password before sending to backend
+      // eslint-disable-next-line 
+      const { confirm_password, ...submitData } = formData;
+      // eslint-disable-next-line 
+      const res = await axiosInstance.post("/accounts/signup/", submitData);
 
-      localStorage.setItem("token", access);
-      localStorage.setItem("refresh", refresh);
-      localStorage.setItem("role", user.role);
-      window.dispatchEvent(new Event("storage"));
+      // Show success message
+      setSuccessMessage("Account created successfully! Redirecting to login...");
 
-      if (user.role === "landlord") navigate("/landlord-dashboard");
-      else if (user.role === "student") navigate("/student-dashboard");
-      else navigate("/");
+      // Redirect to login page after 2 seconds
+      setTimeout(() => {
+        navigate("/signin", { 
+          state: { 
+            message: "Registration successful! Please sign in with your credentials.",
+            email: formData.email 
+          } 
+        });
+      }, 2000);
 
     } catch (err) {
       if (err.response && err.response.data) {
@@ -181,6 +219,13 @@ const SignUpPage = () => {
             <div className="alert alert-error">
               <i className="fas fa-exclamation-circle"></i>
               <span>{error}</span>
+            </div>
+          )}
+
+          {successMessage && (
+            <div className="alert alert-success">
+              <i className="fas fa-check-circle"></i>
+              <span>{successMessage}</span>
             </div>
           )}
 
@@ -320,6 +365,41 @@ const SignUpPage = () => {
             </div>
 
             <div className="form-group">
+              <label htmlFor="confirm_password">
+                <i className="fas fa-lock"></i>
+                Confirm Password
+              </label>
+              <div className="password-input-wrapper">
+                <input
+                  id="confirm_password"
+                  type={showConfirmPassword ? "text" : "password"}
+                  name="confirm_password"
+                  placeholder="Re-enter your password"
+                  value={formData.confirm_password}
+                  onChange={handleChange}
+                  onBlur={handleBlur}
+                  className={getInputClass("confirm_password")}
+                  autoComplete="new-password"
+                  required
+                />
+                <button
+                  type="button"
+                  className="password-toggle"
+                  onClick={() => setShowConfirmPassword(!showConfirmPassword)}
+                  aria-label="Toggle confirm password visibility"
+                >
+                  <i className={`fas ${showConfirmPassword ? "fa-eye-slash" : "fa-eye"}`}></i>
+                </button>
+              </div>
+              {touchedFields.confirm_password && fieldErrors.confirm_password && (
+                <span className="field-error">
+                  <i className="fas fa-exclamation-circle"></i>
+                  {fieldErrors.confirm_password}
+                </span>
+              )}
+            </div>
+
+            <div className="form-group">
               <label htmlFor="role">
                 <i className="fas fa-user-tag"></i>
                 I am a
@@ -334,6 +414,27 @@ const SignUpPage = () => {
                 <option value="student">Student - Looking for accommodation</option>
                 <option value="landlord">Landlord - Listing properties</option>
               </select>
+            </div>
+
+            <div className="form-group-checkbox">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={agreedToTerms}
+                  onChange={(e) => setAgreedToTerms(e.target.checked)}
+                  required
+                />
+                <span className="checkbox-text">
+                  I agree to the{" "}
+                  <Link to="/terms" target="_blank" className="terms-link">
+                    Terms of Service
+                  </Link>{" "}
+                  and{" "}
+                  <Link to="/privacy" target="_blank" className="terms-link">
+                    Privacy Policy
+                  </Link>
+                </span>
+              </label>
             </div>
 
             <button type="submit" className="btn-submit" disabled={loading}>
@@ -357,10 +458,6 @@ const SignUpPage = () => {
               <i className="fas fa-sign-in-alt"></i>
               Sign In
             </Link>
-          </div>
-
-          <div className="auth-terms">
-            <p>By signing up, you agree to our Terms of Service and Privacy Policy</p>
           </div>
         </div>
       </div>

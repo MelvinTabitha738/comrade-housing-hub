@@ -12,10 +12,40 @@ const StudentDashboard = () => {
   const [filteredApartments, setFilteredApartments] = useState([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
-
   const [selectedApartment, setSelectedApartment] = useState(null);
-  const dropdownRef = useRef(null);
   const [sortOption, setSortOption] = useState("");
+  const [userName, setUserName] = useState("");
+
+  const [currentPage, setCurrentPage] = useState(1);
+  const itemsPerPage = 6;
+
+  const dropdownRef = useRef(null);
+
+  // Get greeting based on time
+  const getGreeting = () => {
+    const hour = new Date().getHours();
+    if (hour < 12) return "Good Morning";
+    if (hour < 18) return "Good Afternoon";
+    return "Good Evening";
+  };
+
+  // Fetch user info
+  useEffect(() => {
+    const fetchUserInfo = () => {
+      const userInfo = localStorage.getItem("userInfo");
+      if (userInfo) {
+        try {
+          const parsed = JSON.parse(userInfo);
+          setUserName(parsed.first_name || parsed.username || "Student");
+        } catch {
+          setUserName("Student");
+        }
+      } else {
+        setUserName("Student");
+      }
+    };
+    fetchUserInfo();
+  }, []);
 
   // Fetch universities
   useEffect(() => {
@@ -47,10 +77,10 @@ const StudentDashboard = () => {
   const handleSearchChange = (e) => {
     const term = e.target.value.toLowerCase();
     setSearchTerm(term);
-
-    const filtered = universities.filter((uni) =>
-      uni.name.toLowerCase().includes(term) ||
-      (uni.alias && uni.alias.toLowerCase().includes(term)) // optional: check alias or related fields
+    const filtered = universities.filter(
+      (uni) =>
+        uni.name.toLowerCase().includes(term) ||
+        (uni.alias && uni.alias.toLowerCase().includes(term))
     );
     setFilteredUnis(filtered);
   };
@@ -60,6 +90,7 @@ const StudentDashboard = () => {
     setSelectedUni(uni);
     setSearchTerm(uni.name);
     setFilteredUnis([]);
+    setCurrentPage(1);
     fetchApartments(uni.id);
   };
 
@@ -85,6 +116,7 @@ const StudentDashboard = () => {
 
   // Sort apartments
   useEffect(() => {
+    setCurrentPage(1);
     let sorted = [...apartments];
     if (sortOption === "distance") {
       sorted.sort((a, b) => (a.distance_km || 0) - (b.distance_km || 0));
@@ -108,191 +140,371 @@ const StudentDashboard = () => {
     }
   };
 
-  return (
-    <div className="student-dashboard" style={{ padding: "20px" }}>
-      <h2>Find Apartments Near Your University</h2>
+  // Pagination calculation
+  const indexOfLastItem = currentPage * itemsPerPage;
+  const indexOfFirstItem = indexOfLastItem - itemsPerPage;
+  const currentApartments = filteredApartments.slice(indexOfFirstItem, indexOfLastItem);
 
-      {/* University Search */}
-      <div className="search-box" ref={dropdownRef} style={{ position: "relative", width: "300px", marginTop: "20px" }}>
-        <input
-          type="text"
-          placeholder="Search university..."
-          value={searchTerm}
-          onChange={handleSearchChange}
-          onClick={(e) => e.stopPropagation()}
-          style={{ width: "100%", padding: "8px", boxSizing: "border-box" }}
-        />
-        {filteredUnis.length > 0 && searchTerm && (
-          <div className="dropdown-list" style={{
-            position: "absolute",
-            top: "100%",
-            left: 0,
-            right: 0,
-            background: "#fff",
-            border: "1px solid #ccc",
-            maxHeight: "200px",
-            overflowY: "auto",
-            zIndex: 1000
-          }}>
-            {filteredUnis.map((uni) => (
-              <div
-                key={uni.id}
-                onClick={() => handleSelectUniversity(uni)}
-                style={{ padding: "8px", cursor: "pointer" }}
-              >
-                {uni.name} {uni.total_apartments !== undefined ? `(${uni.total_apartments})` : ""}
-              </div>
-            ))}
+  return (
+    <div className="student-dashboard">
+      {/* Header Section */}
+      <div className="dashboard-header">
+        <div className="header-content">
+          <h1>🎓 {getGreeting()}, {userName}!</h1>
+          <p className="welcome-text">
+            Find your perfect student accommodation near your campus. Search by university and explore verified apartments.
+          </p>
+        </div>
+      </div>
+
+      {/* Search Section */}
+      <div className="search-section">
+        <div className="search-container">
+          <div className="search-header">
+            <i className="fas fa-university"></i>
+            <h2>Search for Your University</h2>
           </div>
-        )}
+          <p className="search-description">
+            Enter your university name to discover available apartments nearby
+          </p>
+          
+          <div className="search-box" ref={dropdownRef}>
+            <div className="search-input-wrapper">
+              <i className="fas fa-search"></i>
+              <input
+                type="text"
+                placeholder="Type university name (e.g., University of Nairobi)..."
+                value={searchTerm}
+                onChange={handleSearchChange}
+                onClick={(e) => e.stopPropagation()}
+              />
+            </div>
+            
+            {filteredUnis.length > 0 && searchTerm && (
+              <div className="dropdown-list">
+                {filteredUnis.map((uni) => (
+                  <div
+                    key={uni.id}
+                    onClick={() => handleSelectUniversity(uni)}
+                    className="dropdown-item"
+                  >
+                    <i className="fas fa-university"></i>
+                    <div className="uni-info">
+                      <span className="uni-name">{uni.name}</span>
+                      {uni.total_apartments !== undefined && (
+                        <span className="uni-count">
+                          {uni.total_apartments} apartment{uni.total_apartments !== 1 ? 's' : ''}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
       </div>
 
       {/* Selected University Info */}
       {selectedUni && (
-        <div style={{ marginTop: "20px" }}>
-          <h3>
-            {selectedUni.name} -{" "}
-            {apartments.length > 0
-              ? `${apartments.length} approved apartment(s)`
-              : `No apartments yet, will be uploaded soon`}
-          </h3>
+        <div className="selected-university">
+          <div className="uni-banner">
+            <i className="fas fa-graduation-cap"></i>
+            <div>
+              <h3>{selectedUni.name}</h3>
+              <p>
+                {apartments.length > 0
+                  ? `${apartments.length} verified apartment${apartments.length !== 1 ? 's' : ''} available`
+                  : "No apartments listed yet. Check back soon!"}
+              </p>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Sort & Filter */}
       {selectedUni && apartments.length > 0 && (
-        <div style={{ marginTop: "20px", display: "flex", gap: "10px", alignItems: "center" }}>
-          <label>Sort by: </label>
-          <select value={sortOption} onChange={(e) => setSortOption(e.target.value)}>
-            <option value="">Default</option>
-            <option value="distance">Nearest</option>
-            <option value="rent_low">Rent: Low → High</option>
-            <option value="rent_high">Rent: High → Low</option>
-          </select>
+        <div className="filter-section">
+          <div className="filter-controls">
+            <div className="filter-info">
+              <i className="fas fa-filter"></i>
+              <span>Sort & Filter Results</span>
+            </div>
+            <div className="sort-dropdown">
+              <label htmlFor="sort-select">
+                <i className="fas fa-sort"></i>
+                Sort by:
+              </label>
+              <select 
+                id="sort-select"
+                value={sortOption} 
+                onChange={(e) => setSortOption(e.target.value)}
+              >
+                <option value="">Default</option>
+                <option value="distance">📍 Nearest First</option>
+                <option value="rent_low">💸 Price: Low to High</option>
+                <option value="rent_high">💰 Price: High to Low</option>
+              </select>
+            </div>
+          </div>
         </div>
       )}
 
       {/* Apartments Grid */}
-      <div className="apartments-grid" style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(250px, 1fr))",
-        gap: "20px",
-        marginTop: "20px"
-      }}>
-        {loading && <p>Loading apartments...</p>}
-        {error && <p className="error">{error}</p>}
-        {!loading && filteredApartments.length === 0 && selectedUni && apartments.length > 0 && (
-          <p>No approved apartments found for {selectedUni.name}.</p>
+      <div className="apartments-container">
+        {loading && (
+          <div className="loading-state">
+            <i className="fas fa-spinner fa-spin"></i>
+            <p>Loading apartments...</p>
+          </div>
+        )}
+        
+        {error && (
+          <div className="error-state">
+            <i className="fas fa-exclamation-circle"></i>
+            <p>{error}</p>
+          </div>
+        )}
+        
+        {!loading && !error && currentApartments.length === 0 && selectedUni && (
+          <div className="empty-state">
+            <i className="fas fa-home"></i>
+            <h3>No Apartments Found</h3>
+            <p>There are no apartments available for this university yet. Please check back later!</p>
+          </div>
         )}
 
-        {!loading &&
-          filteredApartments.map((apt) => (
-            <div
-              key={apt.id}
-              className="apartment-card"
-              style={{
-                border: "1px solid #ccc",
-                borderRadius: "10px",
-                overflow: "hidden",
-                cursor: "pointer",
-                boxShadow: "0 2px 8px rgba(0,0,0,0.1)"
-              }}
-              onClick={() => setSelectedApartment(apt)}
-            >
-              <img
-                src={apt.images[0]?.image || "/placeholder.png"}
-                alt={apt.name}
-                style={{ width: "100%", height: "150px", objectFit: "cover" }}
-              />
-              <div style={{ padding: "10px" }}>
-                <h3>{apt.name}</h3>
-                <p>💸 {apt.monthly_rent} Ksh / month</p>
-                <p>📍 {apt.distance_km || "N/A"} km from university</p>
-                <p>⭐ {apt.average_rating || "N/A"}</p>
-              </div>
-            </div>
-          ))}
+        {!loading && currentApartments.length > 0 && (
+          <div className="apartments-grid">
+            {currentApartments.map((apt) => {
+              const amenitiesArray = Array.isArray(apt.amenities)
+                ? apt.amenities
+                : apt.amenities
+                ? apt.amenities.split(",").map((a) => a.trim())
+                : [];
+
+              const distance =
+                apt.distance_km !== null && apt.distance_km !== undefined
+                  ? parseFloat(apt.distance_km).toFixed(2)
+                  : "N/A";
+
+              const university = apt.university_name
+                ? apt.university_name
+                : apt.university
+                ? typeof apt.university === "string"
+                  ? apt.university
+                  : apt.university.name || "-"
+                : "-";
+
+              return (
+                <div
+                  key={apt.id}
+                  className="apartment-card"
+                  onClick={() => setSelectedApartment(apt)}
+                >
+                  <div className="card-image">
+                    <img
+                      src={apt.images?.[0]?.image || "/placeholder.png"}
+                      alt={apt.name}
+                      onError={(e) => {
+                        e.target.src = "https://images.unsplash.com/photo-1555854877-bab0e564b8d5?w=400&q=80";
+                      }}
+                    />
+                    <div className="card-badge">
+                      <i className="fas fa-star"></i>
+                      {apt.average_rating || "New"}
+                    </div>
+                  </div>
+                  
+                  <div className="card-content">
+                    <h3 className="card-title">{apt.name}</h3>
+                    
+                    <div className="card-details">
+                      <div className="detail-item">
+                        <i className="fas fa-university"></i>
+                        <span>{university}</span>
+                      </div>
+                      <div className="detail-item">
+                        <i className="fas fa-map-marker-alt"></i>
+                        <span>{distance} km away</span>
+                      </div>
+                      <div className="detail-item price">
+                        <i className="fas fa-money-bill-wave"></i>
+                        <span>Ksh {apt.monthly_rent?.toLocaleString() || "N/A"} /month</span>
+                      </div>
+                    </div>
+
+                    {amenitiesArray.length > 0 && (
+                      <div className="card-amenities">
+                        {amenitiesArray.slice(0, 3).map((amenity, idx) => (
+                          <span key={idx} className="amenity-tag">
+                            {amenity}
+                          </span>
+                        ))}
+                        {amenitiesArray.length > 3 && (
+                          <span className="amenity-tag more">
+                            +{amenitiesArray.length - 3} more
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <button className="view-details-btn">
+                      <i className="fas fa-eye"></i>
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
+
+      {/* Pagination */}
+      {filteredApartments.length > itemsPerPage && (
+        <div className="pagination">
+          <button
+            onClick={() => setCurrentPage((prev) => Math.max(prev - 1, 1))}
+            disabled={currentPage === 1}
+            className="pagination-btn"
+          >
+            <i className="fas fa-chevron-left"></i>
+            Previous
+          </button>
+          <span className="pagination-info">
+            Page {currentPage} of {Math.ceil(filteredApartments.length / itemsPerPage)}
+          </span>
+          <button
+            onClick={() =>
+              setCurrentPage((prev) =>
+                prev < Math.ceil(filteredApartments.length / itemsPerPage)
+                  ? prev + 1
+                  : prev
+              )
+            }
+            disabled={currentPage === Math.ceil(filteredApartments.length / itemsPerPage)}
+            className="pagination-btn"
+          >
+            Next
+            <i className="fas fa-chevron-right"></i>
+          </button>
+        </div>
+      )}
 
       {/* Modal for Apartment Detail */}
       {selectedApartment && (
-        <div className="modal-overlay" style={{
-          position: "fixed",
-          top: 0, left: 0, right: 0, bottom: 0,
-          background: "rgba(0,0,0,0.5)",
-          display: "flex",
-          justifyContent: "center",
-          alignItems: "center",
-          zIndex: 999
-        }}>
-          <div className="modal-content" style={{
-            background: "#fff",
-            width: "90%",
-            maxWidth: "800px",
-            maxHeight: "90vh",
-            overflowY: "auto",
-            borderRadius: "10px",
-            padding: "20px",
-            position: "relative"
-          }}>
+        <div className="modal-overlay" onClick={() => setSelectedApartment(null)}>
+          <div className="modal-content" onClick={(e) => e.stopPropagation()}>
             <button
               onClick={() => setSelectedApartment(null)}
-              style={{
-                position: "absolute",
-                top: "10px",
-                right: "15px",
-                fontSize: "18px",
-                background: "none",
-                border: "none",
-                cursor: "pointer"
-              }}
+              className="modal-close"
             >
-              ❌
+              <i className="fas fa-times"></i>
             </button>
 
-            <h2>{selectedApartment.name}</h2>
-            <p>{selectedApartment.description}</p>
-            <p><b>Amenities:</b> {selectedApartment.amenities.join(", ")}</p>
+            <div className="modal-header">
+              <h2>{selectedApartment.name}</h2>
+              <div className="modal-rating">
+                <i className="fas fa-star"></i>
+                <span>{selectedApartment.average_rating || "N/A"}</span>
+              </div>
+            </div>
 
-            {/* Room Videos */}
-            {selectedApartment.room_types?.map((room, idx) => (
-              <div key={idx} style={{ marginBottom: "10px" }}>
-                <h4>{room.name} Video:</h4>
-                {room.video ? (
-                  <video width="100%" controls>
-                    <source src={room.video} type="video/mp4" />
-                  </video>
+            <div className="modal-body">
+              <div className="modal-section">
+                <h3><i className="fas fa-info-circle"></i> Description</h3>
+                <p>{selectedApartment.description || "No description available."}</p>
+              </div>
+
+              <div className="modal-section">
+                <h3><i className="fas fa-th-large"></i> Amenities</h3>
+                <div className="amenities-grid">
+                  {(Array.isArray(selectedApartment.amenities)
+                    ? selectedApartment.amenities
+                    : selectedApartment.amenities
+                    ? selectedApartment.amenities.split(",").map((a) => a.trim())
+                    : []
+                  ).map((amenity, idx) => (
+                    <span key={idx} className="amenity-badge">
+                      <i className="fas fa-check-circle"></i>
+                      {amenity}
+                    </span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Room Videos */}
+              {selectedApartment.room_types?.some(room => room.video) && (
+                <div className="modal-section">
+                  <h3><i className="fas fa-video"></i> Room Videos</h3>
+                  {selectedApartment.room_types.map((room, idx) => (
+                    room.video && (
+                      <div key={idx} className="video-container">
+                        <h4>{room.name}</h4>
+                        <video width="100%" controls>
+                          <source src={room.video} type="video/mp4" />
+                          Your browser does not support the video tag.
+                        </video>
+                      </div>
+                    )
+                  ))}
+                </div>
+              )}
+
+              {/* Available Rooms */}
+              <div className="modal-section">
+                <h3><i className="fas fa-door-open"></i> Available Rooms</h3>
+                {selectedApartment.rooms && selectedApartment.rooms.length > 0 ? (
+                  <div className="rooms-table">
+                    <table>
+                      <thead>
+                        <tr>
+                          <th>Room Label</th>
+                          <th>Status</th>
+                          <th>Action</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {selectedApartment.rooms.map((room) => (
+                          <tr key={room.id}>
+                            <td className="room-label">{room.label}</td>
+                            <td>
+                              {room.is_vacant ? (
+                                <span className="status-badge vacant">
+                                  <i className="fas fa-check-circle"></i>
+                                  Available
+                                </span>
+                              ) : (
+                                <span className="status-badge booked">
+                                  <i className="fas fa-times-circle"></i>
+                                  Booked
+                                </span>
+                              )}
+                            </td>
+                            <td>
+                              {room.is_vacant ? (
+                                <button 
+                                  onClick={() => handleBookRoom(room.id)}
+                                  className="book-btn"
+                                >
+                                  <i className="fas fa-calendar-check"></i>
+                                  Book Now
+                                </button>
+                              ) : (
+                                <span className="unavailable-text">Unavailable</span>
+                              )}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
                 ) : (
-                  <p>No video available</p>
+                  <p className="no-rooms">No rooms available at the moment.</p>
                 )}
               </div>
-            ))}
-
-            {/* Rooms Table */}
-            <table style={{ width: "100%", borderCollapse: "collapse", marginTop: "20px" }}>
-              <thead>
-                <tr style={{ borderBottom: "1px solid #ccc" }}>
-                  <th style={{ padding: "8px" }}>Room Label</th>
-                  <th>Status</th>
-                  <th>Action</th>
-                </tr>
-              </thead>
-              <tbody>
-                {selectedApartment.rooms?.map((room) => (
-                  <tr key={room.id} style={{ borderBottom: "1px solid #eee" }}>
-                    <td style={{ padding: "8px" }}>{room.label}</td>
-                    <td>{room.is_vacant ? "🟢 Vacant" : "🔴 Booked"}</td>
-                    <td>
-                      {room.is_vacant ? (
-                        <button onClick={() => handleBookRoom(room.id)}>Book Now</button>
-                      ) : (
-                        <span>Unavailable</span>
-                      )}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
+            </div>
           </div>
         </div>
       )}

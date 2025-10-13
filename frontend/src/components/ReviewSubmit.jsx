@@ -6,49 +6,72 @@ const ReviewSubmit = ({ prevStep }) => {
   const { formData, resetForm } = useApartment();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
-  // ✅ POST all data (including files)
   const handleSubmit = async () => {
     setIsSubmitting(true);
+
     try {
-      const data = new FormData();
+      // ---------------- 1️⃣ Create Apartment ----------------
+      const apartmentForm = new FormData();
+apartmentForm.append("name", formData.name);
+apartmentForm.append("university", formData.university);
+apartmentForm.append("address", formData.address);
+apartmentForm.append("description", formData.description || "");
+apartmentForm.append("amenities", JSON.stringify(formData.amenities || []));
+apartmentForm.append("roomTypes", JSON.stringify(formData.roomTypes || []));
+if (formData.coverImage) apartmentForm.append("coverImage", formData.coverImage);
 
-      // Apartment details (text fields)
-      data.append("name", formData.name);
-      data.append("university", formData.university);
-      data.append("address", formData.address);
-      data.append("monthly_rent", formData.monthly_rent);
-      data.append("amenities", formData.amenities);
-      data.append("latitude", formData.latitude);
-      data.append("longitude", formData.longitude);
-      data.append("description", formData.description || "");
+const res = await axiosInstance.post("/apartments/apartments/", apartmentForm, {
+  headers: { "Content-Type": "multipart/form-data" },
+});
 
-      // Cover image
+
+      const apartmentId = res.data.id;
+
+      // ---------------- 2️⃣ Upload Cover Image ----------------
       if (formData.coverImage) {
-        data.append("cover_image", formData.coverImage);
+        const imageForm = new FormData();
+        imageForm.append("apartment", apartmentId);
+        imageForm.append("image", formData.coverImage);
+        imageForm.append("caption", "Cover Image");
+
+        await axiosInstance.post("/apartments/apartment-images/", imageForm, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
       }
 
-      // Room types with video
-      (formData.roomTypes || []).forEach((type, idx) => {
-        data.append(`room_types[${idx}][type]`, type.type);
+      // ---------------- 3️⃣ Create Rooms ----------------
+      for (const room of formData.rooms || []) {
+        const roomForm = new FormData();
+        roomForm.append("apartment", apartmentId);
+        roomForm.append("label", room.label);
+        roomForm.append("room_type", room.type);
+        roomForm.append("single", room.single || 1); // optional, adjust if needed
+        roomForm.append("monthly_rent", room.monthly_rent);
+        roomForm.append("is_vacant", room.status === "Vacant");
+
+        await axiosInstance.post("/apartments/rooms/", roomForm, {
+          headers: { "Content-Type": "multipart/form-data" },
+        });
+      }
+
+      // ---------------- 4️⃣ Upload Room Videos ----------------
+      for (const type of formData.roomTypes || []) {
         if (type.video) {
-          data.append(`room_types[${idx}][video]`, type.video);
+          const videoForm = new FormData();
+          videoForm.append("apartment", apartmentId);
+          videoForm.append("room_type", type.type);
+          videoForm.append("video", type.video);
+
+          await axiosInstance.post("/apartments/room-videos/", videoForm, {
+            headers: { "Content-Type": "multipart/form-data" },
+          });
         }
-      });
+      }
 
-      // Individual rooms
-      (formData.rooms || []).forEach((room, idx) => {
-        data.append(`rooms[${idx}][label]`, room.label);
-        data.append(`rooms[${idx}][status]`, room.status);
-      });
-
-      await axiosInstance.post("/apartments/apartments/", data, {
-        headers: { "Content-Type": "multipart/form-data" },
-      });
-
-      alert("🎉 Apartment listing created successfully!");
-      resetForm(); // clear data & go back to Step 1
+      alert("🎉 Apartment listing created successfully! Wait for admin approval.");
+      resetForm();
     } catch (error) {
-      console.error(error);
+      console.error("Error submitting apartment:", error.response?.data || error);
       alert("❌ Failed to create apartment listing.");
     } finally {
       setIsSubmitting(false);
@@ -57,20 +80,26 @@ const ReviewSubmit = ({ prevStep }) => {
 
   return (
     <div className="review-step p-4 max-w-3xl mx-auto bg-white shadow-md rounded-lg">
-      <h2 className="text-xl font-semibold text-center mb-4">
-        Step 3: Review & Submit
-      </h2>
+      <h2 className="text-xl font-semibold text-center mb-4">Step 3: Review & Submit</h2>
 
       {/* Apartment Details */}
       <section className="mb-4">
         <h3 className="font-bold mb-2">🏢 Apartment Details</h3>
         <ul className="space-y-1 text-sm text-gray-700">
           <li><strong>Name:</strong> {formData.name}</li>
-          <li><strong>University:</strong> {formData.university}</li>
+          <li><strong>University:</strong> {formData.university_name || "—"}</li>
           <li><strong>Address:</strong> {formData.address}</li>
-          <li><strong>Monthly Rent:</strong> {formData.monthly_rent} KES</li>
-          <li><strong>Amenities:</strong> {formData.amenities}</li>
-          <li><strong>Coordinates:</strong> {formData.latitude}, {formData.longitude}</li>
+          <li>
+            <strong>Monthly Rent:</strong>{" "}
+            {formData.roomTypes && formData.roomTypes.length > 0
+              ? formData.roomTypes.map(rt => `${rt.type}: KES ${rt.monthly_rent}`).join(", ")
+              : "—"}
+          </li>
+          <li><strong>Amenities:</strong> {Array.isArray(formData.amenities) ? formData.amenities.join(", ") : formData.amenities || "None"}</li>
+          <li>
+            <strong>Distance to University:</strong>{" "}
+            {formData.distance_from_university ? `${parseFloat(formData.distance_from_university).toFixed(2)} km` : "—"}
+          </li>
         </ul>
       </section>
 
@@ -81,12 +110,12 @@ const ReviewSubmit = ({ prevStep }) => {
           <img
             src={URL.createObjectURL(formData.coverImage)}
             alt="Cover"
-            className="w-full max-w-md rounded-lg shadow"
+            style={{ width: "120px", height: "80px", objectFit: "cover", borderRadius: "6px" }}
           />
         </section>
       )}
 
-      {/* Room Types */}
+      {/* Room Types & Videos */}
       {(formData.roomTypes || []).length > 0 && (
         <section className="mb-4">
           <h3 className="font-bold mb-2">🎥 Room Types & Videos</h3>
@@ -118,9 +147,7 @@ const ReviewSubmit = ({ prevStep }) => {
               {formData.rooms.map((room, idx) => (
                 <tr key={idx}>
                   <td className="p-2 border">{room.label}</td>
-                  <td className="p-2 border">
-                    {room.status === "Vacant" ? "🟢" : "🔴"} {room.status}
-                  </td>
+                  <td className="p-2 border">{room.status === "Vacant" ? "🟢" : "🔴"} {room.status}</td>
                 </tr>
               ))}
             </tbody>

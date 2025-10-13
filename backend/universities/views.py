@@ -4,7 +4,6 @@ from django.db.models.functions import Length
 from rest_framework import viewsets, permissions, filters
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.pagination import PageNumberPagination
 
 from .models import University
 from .serializers import UniversityReadSerializer, UniversityWriteSerializer
@@ -12,7 +11,9 @@ from apartments.models import Apartment
 from apartments.serializers import ApartmentReadSerializer
 
 
-# ✅ Custom pagination for apartments
+# ✅ Custom pagination for apartments (keep it)
+from rest_framework.pagination import PageNumberPagination
+
 class UniversityApartmentPagination(PageNumberPagination):
     page_size = 20  # default 20 apartments per page
     page_size_query_param = "page_size"  # allow ?page_size=30
@@ -26,6 +27,9 @@ class UniversityViewSet(viewsets.ModelViewSet):
     filter_backends = [filters.SearchFilter, filters.OrderingFilter]
     search_fields = ["name"]
     ordering_fields = ["name", "total_apartments"]
+
+    # ✅ Remove pagination for universities
+    pagination_class = None
 
     def get_queryset(self):
         qs = super().get_queryset()
@@ -64,7 +68,7 @@ class UniversityViewSet(viewsets.ModelViewSet):
             is_approved=True
         )
 
-        # ✅ Apply pagination
+        # ✅ Apply pagination for apartments only
         paginator = UniversityApartmentPagination()
         page = paginator.paginate_queryset(apartments, request)
 
